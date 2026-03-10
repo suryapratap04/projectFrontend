@@ -1,68 +1,58 @@
-# Docker
-# Build and push an image to Azure Container Registry
-# https://docs.microsoft.com/azure/devops/pipelines/languages/docker
-
 trigger:
 - dev
 
-resources:
-- repo: self
-
 variables:
-  # Container registry service connection established during pipeline creation
-  dockerRegistryServiceConnection: '876f8134-febe-4e80-9ab9-713bb6485171'
-  imageRepository: 'project21frontend'
-  containerRegistry: 'project21frontend.azurecr.io'
-  dockerfilePath: '**/Dockerfile'
-  tag: '91'
-  subscriptionId: $(subscriptionId)
+  imageRepository: project21frontend
+  containerRegistry: project21frontendtest.azurecr.io
+  dockerRegistryServiceConnection: project21-acr-connection
+  azureSubscription: project21-azure-connection
+  dockerfilePath: Dockerfile
+  tag: $(Build.BuildId)
 
-  # Agent VM image name
-  vmImageName: 'ubuntu-latest'
-
+pool:
+  vmImage: ubuntu-latest
 
 stages:
+
 - stage: Build
-  displayName: Build and push stage
+  displayName: Build and Push Image
   jobs:
   - job: Build
-    displayName: Build
-    pool:
-      name: project-21-backend-pool
     steps:
-    - script: docker system prune -a -f
-
-    - task: AzureKeyVault@2
-      inputs:
-        azureSubscription: $(subscribtionId)
-        KeyVaultName: 'project-21-key-vault'
-        SecretsFilter: '*'
 
     - task: Docker@2
-      displayName: Build image
-      env:
-        NEXT_PUBLIC_JWT_SECRET: $(NEXTPUBLICJWTSECRET)
-        NEXT_PUBLIC_BACKEND_URL: $(NEXTPUBLICBACKENDURL)
+      displayName: Build Docker Image
       inputs:
         command: build
         repository: $(imageRepository)
         dockerfile: $(dockerfilePath)
         containerRegistry: $(dockerRegistryServiceConnection)
-        arguments: --build-arg NEXT_PUBLIC_JWT_SECRET=$(NEXT_PUBLIC_JWT_SECRET) --build-arg NEXT_PUBLIC_BACKEND_URL=$(NEXT_PUBLIC_BACKEND_URL)
+        arguments: >
+          --build-arg NEXT_PUBLIC_BACKEND_URL=$(NEXT_PUBLIC_BACKEND_URL)
         tags: |
           $(tag)
+          latest
 
     - task: Docker@2
-      displayName: Push image
+      displayName: Push Docker Image
       inputs:
         command: push
         repository: $(imageRepository)
         containerRegistry: $(dockerRegistryServiceConnection)
         tags: |
           $(tag)
+          latest
+
+- stage: Deploy
+  displayName: Deploy to App Service
+  dependsOn: Build
+  jobs:
+  - job: Deploy
+    steps:
 
     - task: AzureWebAppContainer@1
+      displayName: Deploy Container
       inputs:
-        azureSubscription: 'Azure subscription 1(0839a5ee-329a-4b35-82c1-7c70e55542eb)'
-        appName: 'project-21-frontend'
-        containers: 'project21frontend.azurecr.io/project21frontend:91'
+        azureSubscription: $(azureSubscription)
+        appName: project21-frontend
+        containers: project21frontendtest.azurecr.io/project21frontend:latest
